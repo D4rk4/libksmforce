@@ -13,7 +13,8 @@
 #include <unistd.h> // for _exit()
 #include <stdarg.h> // for va_start()
 #include <stdbool.h> // for bool
-#include <sys/mman.h> // for madvise()
+#include <sys/prctl.h> // for prctl()
+#include <sys/mman.h> // for mmap(), munmap()
 
 #define API extern __attribute__ ((visibility("default")))
 
@@ -63,17 +64,13 @@ static inline void libksmforce_init(void)
     initing = false;
 }
 
-static const size_t pagesize = 4096;
 static void ksmforce(void* ptr, size_t length) {
     if (ptr == NULL) return;
 
-    const uintptr_t addr = (uintptr_t)ptr;
-    const uintptr_t aligned = (addr / pagesize) * pagesize;
-    // round up to page size
-    length += pagesize-1;
-    length &= (~(pagesize-1));
-    // ignore return value
-    (void)madvise((void*)aligned, length, MADV_MERGEABLE);
+    // Enable memory merging using prctl
+    if (prctl(PR_SET_MEMORY_MERGE, 1, 0, 0, 0) != 0) {
+        perror("prctl PR_SET_MEMORY_MERGE failed");
+    }
 }
 
 API void* malloc(size_t size) {
@@ -98,7 +95,7 @@ API void* calloc(size_t nmemb, size_t size) {
     }
     libksmforce_init();
     void* retval = (*libc_calloc)(nmemb, size);
-    ksmforce(retval, nmemb*size);
+    ksmforce(retval, nmemb * size);
     return retval;
 }
 
